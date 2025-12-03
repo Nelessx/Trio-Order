@@ -1,6 +1,6 @@
-import Order from '../models/ordermodel.js';
-import Item from '../models/itemModel.js';
-import AprioriAlgorithm from '../utils/aprioriAlgorithm.js';
+import Order from "../models/ordermodel.js";
+import Item from "../models/itemModel.js";
+import AprioriAlgorithm from "../utils/aprioriAlgorithm.js";
 
 /**
  * Train the recommendation model using historical orders
@@ -8,18 +8,18 @@ import AprioriAlgorithm from '../utils/aprioriAlgorithm.js';
 export const trainRecommendationModel = async (req, res) => {
   try {
     // Fetch all completed orders
-    const orders = await Order.find({ status: 'delivered' });
+    const orders = await Order.find({ status: "delivered" });
 
     if (orders.length === 0) {
       return res.json({
         success: false,
-        message: 'No order history available for training'
+        message: "No order history available for training",
       });
     }
 
     // Convert orders to transactions (array of item IDs)
     const transactions = [];
-    
+
     for (const order of orders) {
       const itemIds = [];
       for (const orderItem of order.items) {
@@ -43,19 +43,19 @@ export const trainRecommendationModel = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Model trained successfully',
+      message: "Model trained successfully",
       stats: {
         totalOrders: orders.length,
         frequentItemsets: frequentItemsets.length,
-        rules: rules.length
-      }
+        rules: rules.length,
+      },
     });
   } catch (error) {
-    console.error('Error training recommendation model:', error);
+    console.error("Error training recommendation model:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to train recommendation model',
-      error: error.message
+      message: "Failed to train recommendation model",
+      error: error.message,
     });
   }
 };
@@ -65,47 +65,28 @@ export const trainRecommendationModel = async (req, res) => {
  */
 export const getRecommendations = async (req, res) => {
   try {
-    const { cartItems } = req.body; // Array of item IDs in cart
-    console.log('\n=== GET RECOMMENDATIONS REQUEST ===');
-    console.log('Cart items received:', cartItems);
+    const { cartItems } = req.body;
 
-    if (!cartItems || cartItems.length === 0) {
-      console.log('No cart items provided');
-      return res.json({
-        success: true,
-        recommendations: []
-      });
-    }
+    console.log("Cart items:", cartItems);
 
-    // Fetch all completed orders for analysis
-    const orders = await Order.find({ status: 'delivered' });
-    console.log(`Found ${orders.length} delivered orders`);
+    // Get all delivered orders
+    const orders = await Order.find({ status: "delivered" });
 
     if (orders.length < 3) {
-      // Not enough data, return popular items instead
-      console.log('⚠️ Insufficient order history (need at least 3 delivered orders)');
-      const popularItems = await getPopularItems();
-      console.log(`Returning ${popularItems.length} popular items as fallback`);
+      const popularItems = await Item.find({})
+        .sort({ hearts: -1, rating: -1 })
+        .limit(10);
       return res.json({
         success: true,
-        recommendations: popularItems.filter(item => 
-          !cartItems.includes(item._id.toString())
-        ).slice(0, 5),
+        recommendations: popularItems,
         fallback: true,
-        message: 'Showing popular items (insufficient order history)'
+        message: "Showing popular items (insufficient order history)",
       });
     }
 
-    // Convert orders to transactions
-    // Note: order.items contains embedded objects with item.name, not references
-    // We need to match by item name to find the actual item IDs
+    // Convert orders to transactions (array of item IDs)
     const transactions = [];
-    
     for (const order of orders) {
-      const itemNames = order.items.map(item => item.item.name);
-      console.log(`Order ${order._id}: items = [${itemNames.join(', ')}]`);
-      
-      // Find item IDs by matching names
       const itemIds = [];
       for (const orderItem of order.items) {
         const foundItem = await Item.findOne({ name: orderItem.item.name });
@@ -113,72 +94,150 @@ export const getRecommendations = async (req, res) => {
           itemIds.push(foundItem._id.toString());
         }
       }
-      
       if (itemIds.length > 0) {
         transactions.push(itemIds);
       }
     }
-    
-    console.log('Transactions for Apriori:', JSON.stringify(transactions, null, 2));
 
-    // Initialize and run Apriori
-    console.log('Running Apriori algorithm...');
+    console.log(`Total transactions: ${transactions.length}`);
+
+    // Run Apriori algorithm
     const apriori = new AprioriAlgorithm(0.05, 0.6);
-    const { rules } = apriori.run(transactions);
-    console.log(`Generated ${rules.length} association rules`);
+    const { rules, frequentItemsets } = apriori.run(transactions);
 
-    // Get recommendations based on cart
-    console.log('Getting recommendations for cart items...');
-    const recommendations = apriori.getRecommendations(cartItems, rules, 5);
-    console.log(`Apriori returned ${recommendations.length} recommendations`);
+    console.log(`Total rules generated: ${rules.length}`);
+
+    // Get recommendations based on cart items
+    let recommendations = apriori.getRecommendations(cartItems, rules, 5);
+
+    console.log(`Recommendations before filtering: ${recommendations.length}`);
 
     if (recommendations.length === 0) {
-      // No rules found, return popular items
-      console.log('⚠️ No matching rules found, falling back to popular items');
-      const popularItems = await getPopularItems();
-      console.log(`Returning ${popularItems.length} popular items`);
+      const popularItems = await Item.find({})
+        .sort({ hearts: -1, rating: -1 })
+        .limit(10);
       return res.json({
         success: true,
-        recommendations: popularItems.filter(item => 
-          !cartItems.includes(item._id.toString())
-        ).slice(0, 5),
+        recommendations: popularItems,
         fallback: true,
-        message: 'Showing popular items'
       });
     }
-    
-    console.log('Recommendations from Apriori:', recommendations.map(r => ({ itemId: r.itemId, score: r.score })));
 
-    // Fetch full item details for recommendations
-    const itemIds = recommendations.map(rec => rec.itemId);
+    // ===== FETCH FULL ITEM DATA & CALCULATE REAL METRICS =====
+    const itemIds = recommendations.map((rec) => rec.itemId);
     const items = await Item.find({ _id: { $in: itemIds } });
 
-    // Combine item details with recommendation scores
-    const enrichedRecommendations = recommendations.map(rec => {
-      const item = items.find(i => i._id.toString() === rec.itemId);
-      return {
-        ...item.toObject(),
-        recommendationScore: rec.score,
-        basedOn: rec.basedOn
-      };
-    });
+    const enrichedRecommendations = await Promise.all(
+      recommendations.map(async (rec) => {
+        const item = items.find((i) => i._id.toString() === rec.itemId);
 
-    console.log(` Sending ${enrichedRecommendations.length} Apriori-based recommendations`);
-    enrichedRecommendations.forEach((rec, idx) => {
-      console.log(`  ${idx + 1}. ${rec.name} (score: ${rec.recommendationScore.toFixed(2)}, based on: ${rec.basedOn.join(', ')})`);
-    });
+        if (!item) return null;
+
+        // ===== CALCULATE REAL METRICS =====
+
+        // 1. GET CONFIDENCE (How often people who buy cartItems also buy this item)
+        let confidence = rec.score || 0;
+
+        // Find the actual rule that generated this recommendation
+        const matchingRule = rules.find(
+          (rule) =>
+            rule.consequent.includes(rec.itemId) &&
+            rule.antecedent.some((ant) => cartItems.includes(ant))
+        );
+
+        if (matchingRule) {
+          confidence = matchingRule.confidence || matchingRule.score || 0;
+        }
+
+        // 2. GET SUPPORT (How often this item pair appears in all orders)
+        let support = rec.support || 0;
+
+        // Calculate support: (orders with both item AND cartItem) / total orders
+        if (rec.basedOn && rec.basedOn.length > 0) {
+          let pairCount = 0;
+          for (const transaction of transactions) {
+            const hasRecommendedItem = transaction.includes(rec.itemId);
+            const hasCartItem = rec.basedOn.some((cartItemId) =>
+              transaction.includes(cartItemId)
+            );
+            if (hasRecommendedItem && hasCartItem) {
+              pairCount++;
+            }
+          }
+          support = pairCount / transactions.length;
+        }
+
+        // 3. GET ITEM NAMES FROM IDs (for "Based on" field)
+        let baseOnNames = [];
+        if (rec.basedOn && rec.basedOn.length > 0) {
+          const baseItems = await Item.find({ _id: { $in: rec.basedOn } });
+          baseOnNames = baseItems.map((bi) => bi.name);
+        }
+
+        console.log(
+          `Item: ${item.name}, Confidence: ${(confidence * 100).toFixed(
+            2
+          )}%, Support: ${(support * 100).toFixed(
+            2
+          )}%, BasedOn: ${baseOnNames.join(", ")}`
+        );
+
+        return {
+          ...item.toObject(),
+
+          // ✨ REAL RECOMMENDATION METRICS ✨
+          recommendationScore: confidence, // Real confidence (0-1)
+          confidence: confidence, // Same as above
+          support: support, // Real support (0-1)
+          basedOn: baseOnNames, // Item names instead of IDs
+
+          // For display purposes
+          confidence_percent: Math.round(confidence * 100),
+          support_percent: Math.round(support * 100),
+
+          // Debug info
+          __debug: {
+            score: rec.score,
+            support: rec.support,
+            basedOnIds: rec.basedOn,
+            basedOnNames: baseOnNames,
+            matchingRule: matchingRule
+              ? {
+                  antecedent: matchingRule.antecedent,
+                  consequent: matchingRule.consequent,
+                  confidence: matchingRule.confidence,
+                  support: matchingRule.support,
+                }
+              : null,
+          },
+        };
+      })
+    );
+
+    // Remove null entries
+    const finalRecommendations = enrichedRecommendations.filter(
+      (r) => r !== null
+    );
+
+    console.log("Final enriched recommendations:", finalRecommendations);
 
     res.json({
       success: true,
-      recommendations: enrichedRecommendations,
-      fallback: false
+      recommendations: finalRecommendations,
+      fallback: false,
+      debug: {
+        totalOrders: orders.length,
+        totalTransactions: transactions.length,
+        rulesGenerated: rules.length,
+        recommendationsReturned: finalRecommendations.length,
+      },
     });
   } catch (error) {
-    console.error('Error getting recommendations:', error);
+    console.error("Error in getRecommendations:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get recommendations',
-      error: error.message
+      error: error.message,
+      stack: error.stack,
     });
   }
 };
@@ -194,7 +253,7 @@ const getPopularItems = async () => {
       .limit(10);
     return items;
   } catch (error) {
-    console.error('Error fetching popular items:', error);
+    console.error("Error fetching popular items:", error);
     return [];
   }
 };
@@ -204,20 +263,20 @@ const getPopularItems = async () => {
  */
 export const getRecommendationStats = async (req, res) => {
   try {
-    const orders = await Order.find({ status: 'delivered' });
-    
+    const orders = await Order.find({ status: "delivered" });
+
     if (orders.length === 0) {
       return res.json({
         success: true,
         stats: {
           totalOrders: 0,
-          message: 'No order history available'
-        }
+          message: "No order history available",
+        },
       });
     }
 
-    const transactions = orders.map(order => 
-      order.items.map(item => item.item.toString())
+    const transactions = orders.map((order) =>
+      order.items.map((item) => item.item.toString())
     );
 
     const apriori = new AprioriAlgorithm(0.05, 0.6);
@@ -225,7 +284,7 @@ export const getRecommendationStats = async (req, res) => {
 
     // Get most frequent item combinations
     const topCombinations = frequentItemsets
-      .filter(item => item.itemset.length >= 2)
+      .filter((item) => item.itemset.length >= 2)
       .sort((a, b) => b.support - a.support)
       .slice(0, 10);
 
@@ -240,16 +299,15 @@ export const getRecommendationStats = async (req, res) => {
         frequentItemsetsCount: frequentItemsets.length,
         rulesCount: rules.length,
         topCombinations: topCombinations,
-        topRules: topRules
-      }
+        topRules: topRules,
+      },
     });
   } catch (error) {
-    console.error('Error getting recommendation stats:', error);
+    console.error("Error getting recommendation stats:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get recommendation stats',
-      error: error.message
+      message: "Failed to get recommendation stats",
+      error: error.message,
     });
   }
 };
-

@@ -1,71 +1,74 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FaStar, FaHeart, FaPlus, FaMinus, FaShoppingCart, FaLightbulb, FaTimes } from 'react-icons/fa';
-import { useCart } from '../../CartContext/CartContext';
-import axios from 'axios';
+import React, { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  FaStar,
+  FaShoppingCart,
+  FaLightbulb,
+  FaTimes,
+  FaChartBar,
+} from "react-icons/fa";
+import { useCart } from "../../CartContext/CartContext";
+import axios from "axios";
 
 const Recommendations = ({ cartItems, onClose }) => {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFallback, setIsFallback] = useState(false);
   const { addToCart, cartItems: contextCartItems, API_BASE } = useCart();
-  
-  // Use ref to track if we've already fetched for current cart state
+
   const hasFetchedRef = useRef(false);
   const currentCartLengthRef = useRef(0);
 
   useEffect(() => {
     const fetchRecommendations = async () => {
-      const cartLength = cartItems?.length || 0;
-      
-      // Don't fetch if no items
-      if (cartLength === 0) {
-        console.log('No cart items');
-        setLoading(false);
-        setRecommendations([]);
-        hasFetchedRef.current = false;
-        currentCartLengthRef.current = 0;
-        return;
-      }
-
-      // Don't fetch if we already fetched for this cart length
-      if (hasFetchedRef.current && currentCartLengthRef.current === cartLength) {
-        console.log('Already fetched for', cartLength, 'items, skipping...');
-        setLoading(false);
-        return;
-      }
-
       try {
-        console.log('=== FETCHING RECOMMENDATIONS ===');
+        const cartLength = cartItems?.length || 0;
+
+        if (cartLength === 0) {
+          setLoading(false);
+          setRecommendations([]);
+          hasFetchedRef.current = false;
+          currentCartLengthRef.current = 0;
+          return;
+        }
+
+        if (
+          hasFetchedRef.current &&
+          currentCartLengthRef.current === cartLength
+        ) {
+          setLoading(false);
+          return;
+        }
+
         setLoading(true);
-        hasFetchedRef.current = false; // Mark as fetching
-        
-        // Extract item IDs from cart
-        const itemIds = cartItems.map(item => item.item?._id || item.item).filter(Boolean);
-        console.log('Cart item IDs:', itemIds);
+        hasFetchedRef.current = false;
 
-        const response = await axios.post('http://localhost:4000/api/recommendations/get', {
-          cartItems: itemIds
-        });
+        const itemIds = cartItems
+          .map((item) => item.item?._id || item.item)
+          .filter(Boolean);
 
-        console.log('API Response:', response.data);
+        console.log("Sending cart items:", itemIds);
+
+        const response = await axios.post(
+          "http://localhost:4000/api/recommendations/get",
+          {
+            cartItems: itemIds,
+          }
+        );
+
+        console.log("Recommendations response:", response.data);
 
         if (response.data.success) {
           const recs = response.data.recommendations || [];
-          console.log(`✅ Got ${recs.length} recommendations`);
           setRecommendations(recs);
           setIsFallback(response.data.fallback || false);
-          
-          // Mark as successfully fetched
           hasFetchedRef.current = true;
           currentCartLengthRef.current = cartLength;
         } else {
-          console.warn('⚠️ API returned success: false');
           setRecommendations([]);
         }
       } catch (error) {
-        console.error('❌ Error fetching recommendations:', error);
-        console.error('Error details:', error.response?.data || error.message);
+        console.error("Error fetching recommendations:", error);
         setRecommendations([]);
         hasFetchedRef.current = false;
       } finally {
@@ -74,18 +77,18 @@ const Recommendations = ({ cartItems, onClose }) => {
     };
 
     fetchRecommendations();
-  }, [cartItems?.length]); // Only depend on length
+  }, [cartItems?.length]);
 
   const buildImageUrl = (path) => {
-    if (!path) return '';
-    return path.startsWith('http') 
-      ? path 
-      : `${API_BASE}/uploads/${String(path).replace(/^\/?uploads\//, '')}`;
+    if (!path) return "";
+    return path.startsWith("http")
+      ? path
+      : `${API_BASE}/uploads/${String(path).replace(/^\/?uploads\//, "")}`;
   };
 
   const getItemQuantityInCart = (itemId) => {
-    const cartItem = contextCartItems.find(ci => 
-      (ci.item._id || ci.item) === itemId
+    const cartItem = contextCartItems.find(
+      (ci) => (ci.item._id || ci.item) === itemId
     );
     return cartItem ? cartItem.quantity : 0;
   };
@@ -95,11 +98,8 @@ const Recommendations = ({ cartItems, onClose }) => {
   };
 
   if (!cartItems || cartItems.length === 0) {
-    console.log('Recommendations: No cart items, not showing recommendations');
     return null;
   }
-  
-  console.log('Recommendations component mounted with', cartItems.length, 'cart items');
 
   if (loading) {
     return (
@@ -110,14 +110,15 @@ const Recommendations = ({ cartItems, onClose }) => {
       >
         <div className="flex items-center justify-center gap-3 text-[#FFD369]">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#FFD369] border-t-transparent"></div>
-          <p style={{ fontFamily: "'Lato', sans-serif" }}>Finding perfect recommendations for you...</p>
+          <p style={{ fontFamily: "'Lato', sans-serif" }}>
+            Finding perfect recommendations for you...
+          </p>
         </div>
       </motion.div>
     );
   }
 
   if (recommendations.length === 0) {
-    console.log('No recommendations received from API');
     return null;
   }
 
@@ -138,11 +139,19 @@ const Recommendations = ({ cartItems, onClose }) => {
             <FaLightbulb className="text-white text-xl" />
           </div>
           <div>
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-[#FF4C29] to-[#FFD369] bg-clip-text text-transparent" style={{ fontFamily: "'Playfair Display', serif" }}>
-              {isFallback ? 'Popular Choices' : 'You Might Also Like'}
+            <h3
+              className="text-2xl font-bold bg-gradient-to-r from-[#FF4C29] to-[#FFD369] bg-clip-text text-transparent"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              {isFallback ? "Popular Choices" : "You Might Also Like"}
             </h3>
-            <p className="text-[#B3B3B3] text-sm" style={{ fontFamily: "'Lato', sans-serif" }}>
-              {isFallback ? 'Customers favorite picks' : 'Based on your cart items'}
+            <p
+              className="text-[#B3B3B3] text-sm"
+              style={{ fontFamily: "'Lato', sans-serif" }}
+            >
+              {isFallback
+                ? "Customers favorite picks"
+                : "Powered by Apriori Algorithm"}
             </p>
           </div>
         </div>
@@ -163,7 +172,7 @@ const Recommendations = ({ cartItems, onClose }) => {
         <AnimatePresence>
           {recommendations.map((item, index) => {
             const quantityInCart = getItemQuantityInCart(item._id);
-            
+
             return (
               <motion.div
                 key={item._id}
@@ -200,13 +209,19 @@ const Recommendations = ({ cartItems, onClose }) => {
 
                 {/* Content */}
                 <div className="p-3 space-y-2">
-                  <h4 className="text-[#F5F5F5] font-semibold text-sm truncate" style={{ fontFamily: "'Lato', sans-serif" }}>
+                  <h4
+                    className="text-[#F5F5F5] font-semibold text-sm truncate"
+                    style={{ fontFamily: "'Lato', sans-serif" }}
+                  >
                     {item.name}
                   </h4>
-                  
+
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-[#FFD369] font-bold text-lg" style={{ fontFamily: "'Lato', sans-serif" }}>
+                      <span
+                        className="text-[#FFD369] font-bold text-lg"
+                        style={{ fontFamily: "'Lato', sans-serif" }}
+                      >
                         ₹{item.price}
                       </span>
                       {item.discount > 0 && (
@@ -217,20 +232,186 @@ const Recommendations = ({ cartItems, onClose }) => {
                     </div>
                   </div>
 
+                  {/* ✨ OPTION 3: ALGORITHM METRICS SECTION ✨ */}
+                  {!isFallback &&
+                    item.confidence_percent !== undefined &&
+                    item.support_percent !== undefined && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        className="space-y-2 mt-3 p-3 bg-gradient-to-br from-[#FF4C29]/15 to-[#FFD369]/15 border border-[#FFD369]/40 rounded-xl"
+                      >
+                        {/* Title */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <FaChartBar className="text-[#FFD369] text-sm" />
+                          <span
+                            className="text-[#FFD369] font-bold text-xs uppercase tracking-wider"
+                            style={{ fontFamily: "'Lato', sans-serif" }}
+                          >
+                            Algorithm Metrics
+                          </span>
+                        </div>
+
+                        {/* ===== METRIC 1: MATCH RATE (CONFIDENCE) ===== */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span
+                              className="text-[#B3B3B3] text-xs font-semibold"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              Match Rate:
+                            </span>
+                            <span
+                              className="text-[#FFD369] font-bold text-sm"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              {item.confidence_percent}%
+                            </span>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{
+                                width: `${item.confidence_percent}%`,
+                              }}
+                              transition={{ duration: 1, ease: "easeOut" }}
+                              className="h-full bg-gradient-to-r from-[#FF4C29] to-[#FFD369] rounded-full"
+                            ></motion.div>
+                          </div>
+
+                          {/* Explanation */}
+                          <p
+                            className="text-[#B3B3B3] text-[11px] leading-tight mt-1.5"
+                            style={{ fontFamily: "'Lato', sans-serif" }}
+                          >
+                            <span className="text-[#FFD369] font-semibold block">
+                              📊 Confidence:
+                            </span>
+                            {item.confidence_percent}% of customers who bought{" "}
+                            <span className="text-[#FFD369] font-bold">
+                              {item.basedOn && item.basedOn.length > 0
+                                ? item.basedOn[0]
+                                : "similar items"}
+                            </span>{" "}
+                            also bought this
+                          </p>
+                        </div>
+
+                        {/* ===== METRIC 2: POPULARITY (SUPPORT) ===== */}
+                        <div className="space-y-1.5 border-t border-white/10 pt-2">
+                          <div className="flex items-center justify-between">
+                            <span
+                              className="text-[#B3B3B3] text-xs font-semibold"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              Popularity:
+                            </span>
+                            <span
+                              className="text-amber-400 font-bold text-sm"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              {item.support_percent}%
+                            </span>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{
+                                width: `${item.support_percent}%`,
+                              }}
+                              transition={{
+                                duration: 1,
+                                ease: "easeOut",
+                                delay: 0.2,
+                              }}
+                              className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full"
+                            ></motion.div>
+                          </div>
+
+                          {/* Explanation */}
+                          <p
+                            className="text-[#B3B3B3] text-[11px] leading-tight mt-1.5"
+                            style={{ fontFamily: "'Lato', sans-serif" }}
+                          >
+                            <span className="text-amber-400 font-semibold block">
+                              🔥 Support:
+                            </span>
+                            This item combination appears in{" "}
+                            {item.support_percent}% of all historical orders
+                          </p>
+                        </div>
+
+                        {/* ===== METRIC 3: BASED ON (TRIGGER ITEMS) ===== */}
+                        {item.basedOn && item.basedOn.length > 0 && (
+                          <div className="space-y-1.5 border-t border-white/10 pt-2">
+                            <span
+                              className="text-[#B3B3B3] text-xs font-semibold block"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              🔗 Based on:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {item.basedOn.map((trigger, idx) => (
+                                <motion.span
+                                  key={idx}
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{
+                                    delay: 0.3 + idx * 0.1,
+                                  }}
+                                  className="bg-gradient-to-r from-[#FF4C29]/50 to-[#FFD369]/50 text-[#FFD369] text-[10px] px-2.5 py-1.5 rounded-full border border-[#FFD369]/60 font-bold shadow-lg"
+                                  style={{ fontFamily: "'Lato', sans-serif" }}
+                                >
+                                  {trigger}
+                                </motion.span>
+                              ))}
+                            </div>
+                            <p
+                              className="text-[#B3B3B3] text-[11px] leading-tight mt-1.5"
+                              style={{ fontFamily: "'Lato', sans-serif" }}
+                            >
+                              Items in your cart that triggered this
+                              recommendation
+                            </p>
+                          </div>
+                        )}
+
+                        {/* ===== ALGORITHM EXPLANATION ===== */}
+                        <div className="bg-white/5 border-l-4 border-[#FFD369]/60 pl-2.5 mt-2.5 pt-2.5 pb-2">
+                          <p
+                            className="text-[#B3B3B3] text-[10px] leading-snug"
+                            style={{ fontFamily: "'Lato', sans-serif" }}
+                          >
+                            <span className="text-[#FFD369] font-bold block mb-1">
+                              📌 Apriori Algorithm
+                            </span>
+                            Generated by analyzing historical orders to find
+                            frequently purchased item combinations using
+                            association rules
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  {/* ✨ END OF ALGORITHM METRICS SECTION ✨ */}
+
                   {/* Add to Cart Button */}
                   {quantityInCart === 0 ? (
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => handleAddToCart(item)}
-                      className="w-full bg-gradient-to-r from-[#FF4C29] to-[#FFD369] hover:from-[#FF6B35] hover:to-[#FFD369] text-white font-semibold py-2 rounded-xl flex items-center justify-center gap-2 text-sm transition-all duration-300 shadow-md"
+                      className="w-full bg-gradient-to-r from-[#FF4C29] to-[#FFD369] hover:from-[#FF6B35] hover:to-[#FFD369] text-white font-semibold py-2 rounded-xl flex items-center justify-center gap-2 text-sm transition-all duration-300 shadow-md mt-2"
                       style={{ fontFamily: "'Lato', sans-serif" }}
                     >
                       <FaShoppingCart className="text-xs" />
-                      <span>Add</span>
+                      <span>Add to Cart</span>
                     </motion.button>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold py-2 rounded-xl text-sm">
+                    <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold py-2 rounded-xl text-sm mt-2">
                       <FaShoppingCart className="text-xs" />
                       <span>In Cart ({quantityInCart})</span>
                     </div>
@@ -250,8 +431,12 @@ const Recommendations = ({ cartItems, onClose }) => {
           transition={{ delay: 0.5 }}
           className="mt-4 text-center"
         >
-          <p className="text-[#B3B3B3] text-xs" style={{ fontFamily: "'Lato', sans-serif" }}>
-            💡 These items are frequently ordered together by our customers
+          <p
+            className="text-[#B3B3B3] text-xs"
+            style={{ fontFamily: "'Lato', sans-serif" }}
+          >
+            💡 AI-powered recommendations using Apriori Algorithm to find
+            frequent item combinations
           </p>
         </motion.div>
       )}
@@ -260,4 +445,3 @@ const Recommendations = ({ cartItems, onClose }) => {
 };
 
 export default Recommendations;
-

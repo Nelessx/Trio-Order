@@ -1,10 +1,10 @@
 /**
- * Apriori Algorithm Implementation 
+ * Apriori Algorithm Implementation
  * Generates frequent itemsets and association rules from transaction data
  */
 
 class AprioriAlgorithm {
-  constructor(minSupport = 0.1, minConfidence = 0.5) {
+  constructor(minSupport = 0.05, minConfidence = 0.6) {
     this.minSupport = minSupport;
     this.minConfidence = minConfidence;
   }
@@ -26,8 +26,9 @@ class AprioriAlgorithm {
         if (union.length === k) {
           // Sort to avoid duplicates
           const sortedUnion = union.sort();
-          const exists = candidates.some(candidate => 
-            JSON.stringify(candidate) === JSON.stringify(sortedUnion)
+          const exists = candidates.some(
+            (candidate) =>
+              JSON.stringify(candidate) === JSON.stringify(sortedUnion)
           );
           if (!exists) {
             candidates.push(sortedUnion);
@@ -45,7 +46,7 @@ class AprioriAlgorithm {
   calculateSupport(itemset, transactions) {
     let count = 0;
     for (const transaction of transactions) {
-      if (itemset.every(item => transaction.includes(item))) {
+      if (itemset.every((item) => transaction.includes(item))) {
         count++;
       }
     }
@@ -61,7 +62,7 @@ class AprioriAlgorithm {
       if (support >= this.minSupport) {
         frequentItemsets.push({
           itemset: candidate,
-          support: support
+          support: support,
         });
       }
     }
@@ -90,7 +91,7 @@ class AprioriAlgorithm {
       if (support >= this.minSupport) {
         currentItemsets.push({
           itemset: [item],
-          support: support
+          support: support,
         });
       }
     }
@@ -100,16 +101,16 @@ class AprioriAlgorithm {
     // Generate frequent k-itemsets
     let k = 2;
     while (currentItemsets.length > 0) {
-      const prevItemsets = currentItemsets.map(item => item.itemset);
+      const prevItemsets = currentItemsets.map((item) => item.itemset);
       const candidates = this.generateCandidates(prevItemsets, k);
-      
+
       currentItemsets = [];
       this.pruneCandidates(candidates, transactions, currentItemsets);
-      
+
       if (currentItemsets.length > 0) {
         allFrequentItemsets.push(...currentItemsets);
       }
-      
+
       k++;
     }
 
@@ -123,7 +124,9 @@ class AprioriAlgorithm {
     const rules = [];
 
     // Only consider itemsets with 2 or more items
-    const multiItemsets = frequentItemsets.filter(item => item.itemset.length >= 2);
+    const multiItemsets = frequentItemsets.filter(
+      (item) => item.itemset.length >= 2
+    );
 
     for (const itemsetObj of multiItemsets) {
       const itemset = itemsetObj.itemset;
@@ -131,30 +134,38 @@ class AprioriAlgorithm {
 
       // Generate all possible subsets as antecedents
       const subsets = this.generateSubsets(itemset);
-      
+
       for (const antecedent of subsets) {
         if (antecedent.length === 0 || antecedent.length === itemset.length) {
           continue;
         }
 
-        const consequent = itemset.filter(item => !antecedent.includes(item));
-        
+        const consequent = itemset.filter((item) => !antecedent.includes(item));
+
         // Find support of antecedent
-        const antecedentSupport = frequentItemsets.find(item => 
-          item.itemset.length === antecedent.length &&
-          antecedent.every(a => item.itemset.includes(a))
-        )?.support || 0;
+        const antecedentSupport =
+          frequentItemsets.find(
+            (item) =>
+              item.itemset.length === antecedent.length &&
+              antecedent.every((a) => item.itemset.includes(a))
+          )?.support || 0;
 
         if (antecedentSupport > 0) {
           const confidence = itemsetSupport / antecedentSupport;
-          
+
           if (confidence >= this.minConfidence) {
             rules.push({
               antecedent: antecedent,
               consequent: consequent,
               support: itemsetSupport,
               confidence: confidence,
-              lift: itemsetSupport / (antecedentSupport * this.calculateConsequentSupport(consequent, frequentItemsets))
+              lift:
+                itemsetSupport /
+                (antecedentSupport *
+                  this.calculateConsequentSupport(
+                    consequent,
+                    frequentItemsets
+                  )),
             });
           }
         }
@@ -169,9 +180,10 @@ class AprioriAlgorithm {
    * Calculate support for consequent
    */
   calculateConsequentSupport(consequent, frequentItemsets) {
-    const found = frequentItemsets.find(item => 
-      item.itemset.length === consequent.length &&
-      consequent.every(c => item.itemset.includes(c))
+    const found = frequentItemsets.find(
+      (item) =>
+        item.itemset.length === consequent.length &&
+        consequent.every((c) => item.itemset.includes(c))
     );
     return found ? found.support : 0.01; // Avoid division by zero
   }
@@ -181,14 +193,14 @@ class AprioriAlgorithm {
    */
   generateSubsets(arr) {
     const subsets = [[]];
-    
+
     for (const item of arr) {
       const len = subsets.length;
       for (let i = 0; i < len; i++) {
         subsets.push([...subsets[i], item]);
       }
     }
-    
+
     return subsets;
   }
 
@@ -198,32 +210,42 @@ class AprioriAlgorithm {
   getRecommendations(cartItems, rules, limit = 5) {
     const recommendations = new Map();
 
-    // Find rules where antecedent matches cart items
     for (const rule of rules) {
-      // Check if all antecedent items are in cart
-      const matchingItems = rule.antecedent.filter(item => cartItems.includes(item));
-      
+      // Check if any cart item matches the rule's antecedent
+      const matchingItems = rule.antecedent.filter((item) =>
+        cartItems.includes(item)
+      );
+
       if (matchingItems.length > 0) {
-        // Add consequent items as recommendations
-        for (const item of rule.consequent) {
+        // This rule applies to the cart
+        for (const consequentItem of rule.consequent) {
           // Don't recommend items already in cart
-          if (!cartItems.includes(item)) {
-            if (!recommendations.has(item)) {
-              recommendations.set(item, {
-                itemId: item,
-                score: rule.confidence,
+          if (!cartItems.includes(consequentItem)) {
+            const key = consequentItem;
+
+            if (!recommendations.has(key)) {
+              // First time seeing this item
+              recommendations.set(key, {
+                itemId: consequentItem,
+                score: rule.confidence || rule.support,
+                confidence: rule.confidence,
                 support: rule.support,
-                basedOn: rule.antecedent
+                basedOn: matchingItems, // Which cart items triggered this
+                rule: rule, // Store the entire rule for debugging
               });
             } else {
-              // If item already recommended, take highest confidence
-              const existing = recommendations.get(item);
-              if (rule.confidence > existing.score) {
-                recommendations.set(item, {
-                  itemId: item,
-                  score: rule.confidence,
+              // Item already recommended, keep the higher confidence
+              const existing = recommendations.get(key);
+              const newScore = rule.confidence || rule.support;
+
+              if (newScore > existing.score) {
+                recommendations.set(key, {
+                  itemId: consequentItem,
+                  score: newScore,
+                  confidence: rule.confidence,
                   support: rule.support,
-                  basedOn: rule.antecedent
+                  basedOn: matchingItems,
+                  rule: rule,
                 });
               }
             }
@@ -232,23 +254,64 @@ class AprioriAlgorithm {
       }
     }
 
-    // Convert to array and sort by score
-    const sortedRecommendations = Array.from(recommendations.values())
-      .sort((a, b) => b.score - a.score)
+    // Sort by score and return top N
+    const sorted = Array.from(recommendations.values())
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
       .slice(0, limit);
 
-    return sortedRecommendations;
+    console.log(`[APRIORI] Recommendations returned: ${sorted.length}`);
+    sorted.forEach((rec) => {
+      console.log(
+        `  - Item: ${rec.itemId}, Confidence: ${(rec.confidence * 100).toFixed(
+          2
+        )}%, Support: ${(rec.support * 100).toFixed(2)}%`
+      );
+    });
+
+    return sorted;
+  }
+
+  /**
+   * Get the number of transactions a rule appears in
+   */
+  getTransactionCountForRule(antecedent, consequent, transactions) {
+    let count = 0;
+    for (const transaction of transactions) {
+      const hasAntecedent = antecedent.every((item) =>
+        transaction.includes(item)
+      );
+      const hasConsequent = consequent.every((item) =>
+        transaction.includes(item)
+      );
+      if (hasAntecedent && hasConsequent) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
    * Main function to run Apriori algorithm
    */
   run(transactions) {
+    console.log(`[APRIORI] Starting with ${transactions.length} transactions`);
+
     const frequentItemsets = this.findFrequentItemsets(transactions);
+    console.log(`[APRIORI] Found ${frequentItemsets.length} frequent itemsets`);
+
     const rules = this.generateRules(frequentItemsets);
-    return { frequentItemsets, rules };
+    console.log(`[APRIORI] Generated ${rules.length} association rules`);
+
+    return {
+      frequentItemsets,
+      rules,
+      stats: {
+        totalTransactions: transactions.length,
+        frequentItemsetsCount: frequentItemsets.length,
+        rulesCount: rules.length,
+      },
+    };
   }
 }
 
 export default AprioriAlgorithm;
-
